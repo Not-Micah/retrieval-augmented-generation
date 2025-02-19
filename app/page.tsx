@@ -1,101 +1,111 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState, useEffect, useRef } from "react";
+import { IoSend } from "react-icons/io5";
+import { BeatLoader } from "react-spinners";
+
+const Page = () => {
+  const [userPrompt, setUserPrompt] = useState("");
+  const [userHistory, setUserHistory] = useState<
+    { role: string; parts: { text: string }[] }[]
+  >([]);
+  const [sending, setSending] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+
+  const handleRequest = async () => {
+    if (!userPrompt.trim()) return;
+    try {
+      setSending(true);
+      const response = await fetch("http://localhost:3000/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ history: userHistory, message: userPrompt }),
+      });
+      const data = await response.json();
+
+      setUserHistory((prev) => [
+        ...prev,
+        { role: "user", parts: [{ text: userPrompt }] },
+        { role: "model", parts: [{ text: data.message }] },
+      ]);
+      setUserPrompt("");
+    } catch (error) {
+      console.error("Error fetching AI response:", error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  useEffect(() => {
+    if (anchorRef.current) {
+      anchorRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [userHistory]);
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen flex flex-col bg-white">
+      <div className="flex-grow flex flex-col max-w-3xl mx-auto w-full px-4 py-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-light text-gray-800 text-center">Chat Assistant</h1>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+
+        <div className="flex-grow overflow-y-auto custom-scrollbar space-y-6 mb-6">
+          {userHistory.map((message, index) => (
+            <div
+              key={index}
+              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-[85%] px-4 py-3 rounded-lg ${
+                  message.role === "user"
+                    ? "bg-black text-white"
+                    : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                <p className="text-[15px] leading-relaxed">
+                  {message.parts[0].text}
+                </p>
+              </div>
+            </div>
+          ))}
+          
+          {sending && (
+            <div className="flex justify-start">
+              <div className="bg-gray-100 px-4 py-3 rounded-lg">
+                <BeatLoader size={8} color="#000000" />
+              </div>
+            </div>
+          )}
+          <div ref={anchorRef}></div>
+        </div>
+
+        <form
+          className="relative"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleRequest();
+          }}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+          <input
+            type="text"
+            className="w-full p-4 pr-12 rounded-lg bg-gray-100 border-0 outline-none text-gray-800 placeholder-gray-400"
+            value={userPrompt}
+            onChange={(e) => setUserPrompt(e.target.value)}
+            placeholder="Type your message..."
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <button
+            type="submit"
+            className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-md transition-opacity ${
+              sending ? "opacity-50" : "opacity-100 hover:opacity-80"
+            }`}
+            disabled={sending}
+          >
+            <IoSend size={20} className="text-gray-800" />
+          </button>
+        </form>
+      </div>
     </div>
   );
-}
+};
+
+export default Page;
