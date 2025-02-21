@@ -1,111 +1,159 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { IoSend } from "react-icons/io5";
-import { BeatLoader } from "react-spinners";
+import React, { useEffect, useState } from 'react';
+import { gapi } from 'gapi-script';
+import Event from './components/Event';
+import Message from './components/Message';
 
-const Page = () => {
-  const [userPrompt, setUserPrompt] = useState("");
-  const [userHistory, setUserHistory] = useState<
-    { role: string; parts: { text: string }[] }[]
-  >([]);
-  const [sending, setSending] = useState(false);
-  const anchorRef = useRef<HTMLDivElement>(null);
+const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
+const CALENDAR_ID = process.env.NEXT_PUBLIC_CALENDAR_ID;
+const SCOPES = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly';
 
-  const handleRequest = async () => {
-    if (!userPrompt.trim()) return;
-    try {
-      setSending(true);
-      const response = await fetch("http://localhost:3000/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ history: userHistory, message: userPrompt }),
+const App = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [messages, setMessages] = useState([]);
+  // @ts-ignore
+  const [events, setEvents] = useState([]);
+
+  useEffect(() => {
+    const initClient = () => {
+      gapi.client.init({
+        apiKey: API_KEY,
+        clientId: CLIENT_ID,
+        discoveryDocs: [
+          'https://www.googleapis.com/discovery/v1/apis/gmail/v1/rest',
+          'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'
+        ],
+        scope: SCOPES,
+      }).then(() => {
+        // @ts-ignore
+        gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
+        // @ts-ignore
+        updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());    
       });
-      const data = await response.json();
+    };
 
-      setUserHistory((prev) => [
-        ...prev,
-        { role: "user", parts: [{ text: userPrompt }] },
-        { role: "model", parts: [{ text: data.message }] },
-      ]);
-      setUserPrompt("");
-    } catch (error) {
-      console.error("Error fetching AI response:", error);
-    } finally {
-      setSending(false);
+    gapi.load('client:auth2', initClient);
+  }, []);
+
+  // @ts-ignore
+  const updateSigninStatus = (isSignedIn) => {
+    setIsAuthenticated(isSignedIn);
+    if (isSignedIn) {
+      fetchMessages();
+      getEvents();
     }
   };
 
-  useEffect(() => {
-    if (anchorRef.current) {
-      anchorRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
-  }, [userHistory]);
+  // @ts-ignore
+  const handleAuthClick = () => {
+    // @ts-ignore
+    gapi.auth2.getAuthInstance().signIn();
+  };
+
+  // @ts-ignore
+  const handleSignoutClick = () => {
+    // @ts-ignore
+    gapi.auth2.getAuthInstance().signOut();
+  };
+
+  const fetchMessages = () => {
+    gapi.client.gmail.users.messages.list({
+      userId: 'me',
+      maxResults: 10
+    }).then((response) => {
+      // @ts-ignore
+      const messages = response.result.messages;
+      if (messages && messages.length > 0) {
+        const messagePromises = messages.map((msg) =>
+          gapi.client.gmail.users.messages.get({
+            userId: 'me',
+            // @ts-ignore
+            id: msg.id,
+          })
+        );
+
+        Promise.all(messagePromises).then((responses) => {
+          const messageDetails = responses.map((res) => res.result);
+          // @ts-ignore
+          setMessages(messageDetails);
+        });
+      }
+    });
+  };
+
+  const getEvents = () => {
+    gapi.client.request({
+      path: `https://www.googleapis.com/calendar/v3/calendars/${CALENDAR_ID}/events`,
+    }).then(
+      (response) => {
+        // @ts-ignore
+        const events = response.result.items;
+        setEvents(events);
+      },
+      function (err) {
+        console.error("Error fetching calendar events:", err);
+      }
+    );
+  };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
-      <div className="flex-grow flex flex-col max-w-3xl mx-auto w-full px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-light text-gray-800 text-center">Chat Assistant</h1>
-        </div>
-
-        <div className="flex-grow overflow-y-auto custom-scrollbar space-y-6 mb-6">
-          {userHistory.map((message, index) => (
-            <div
-              key={index}
-              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-3xl mx-auto">
+        {!isAuthenticated ? (
+          <div className="text-center">
+            <h1 className="text-3xl font-medium mb-8">Welcome to Your Dashboard</h1>
+            <button 
+              onClick={handleAuthClick} 
+              className="bg-black text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors"
             >
-              <div
-                className={`max-w-[85%] px-4 py-3 rounded-lg ${
-                  message.role === "user"
-                    ? "bg-black text-white"
-                    : "bg-gray-100 text-gray-800"
-                }`}
+              Sign in with Google
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-between items-center mb-12">
+              <h1 className="text-2xl font-medium">Dashboard</h1>
+              <button 
+                onClick={handleSignoutClick} 
+                className="text-gray-600 hover:text-gray-800 transition-colors"
               >
-                <p className="text-[15px] leading-relaxed">
-                  {message.parts[0].text}
-                </p>
-              </div>
+                Sign out
+              </button>
             </div>
-          ))}
-          
-          {sending && (
-            <div className="flex justify-start">
-              <div className="bg-gray-100 px-4 py-3 rounded-lg">
-                <BeatLoader size={8} color="#000000" />
-              </div>
-            </div>
-          )}
-          <div ref={anchorRef}></div>
-        </div>
+            
+            <div className="space-y-12">
+              <section>
+                <h2 className="text-xl font-medium mb-6">Messages</h2>
+                {messages.map((message, index) => (
+                  <Message 
+                    key={index}
+                    /* @ts-ignore */
+                    subject={message.payload.headers.find(header => header.name === 'Subject')?.value || 'No Subject'}
+                    /* @ts-ignore */
+                    from={message.payload.headers.find(header => header.name === 'From')?.value || 'Unknown Sender'}
+                  />
+                ))}
+              </section>
 
-        <form
-          className="relative"
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleRequest();
-          }}
-        >
-          <input
-            type="text"
-            className="w-full p-4 pr-12 rounded-lg bg-gray-100 border-0 outline-none text-gray-800 placeholder-gray-400"
-            value={userPrompt}
-            onChange={(e) => setUserPrompt(e.target.value)}
-            placeholder="Type your message..."
-          />
-          <button
-            type="submit"
-            className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-md transition-opacity ${
-              sending ? "opacity-50" : "opacity-100 hover:opacity-80"
-            }`}
-            disabled={sending}
-          >
-            <IoSend size={20} className="text-gray-800" />
-          </button>
-        </form>
+              <section>
+                <h2 className="text-xl font-medium mb-6">Calendar</h2>
+                {events?.map((event, index) => (
+                  // @ts-ignore
+                  <Event 
+                    key={index}
+                    /* @ts-ignore */
+                    description={event.summary || 'Untitled Event'} 
+                  />
+                ))}
+              </section>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 };
 
-export default Page;
+export default App;
