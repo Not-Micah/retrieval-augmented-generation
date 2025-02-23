@@ -1,12 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { IoSend } from "react-icons/io5";
-import { BeatLoader } from "react-spinners";
 import { gapi } from 'gapi-script';
 import { addCalendarEvent } from './utils/calendar';
 import { addTask } from './utils/tasks';
 import { parseAIResponse } from './types/ai';
+import { LoadingScreen } from './components/LoadingScreen';
+import { SignInScreen } from './components/SignInScreen';
+import { ChatMessages } from './components/ChatMessages';
+import { MessageInput } from './components/MessageInput';
+import { Header } from './components/Header';
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
@@ -17,28 +20,25 @@ const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/calendar.events.owned',
+  'https://www.googleapis.com/auth/tasks.readonly',
   'https://www.googleapis.com/auth/tasks'
 ].join(' ');
 
-const chatContainerStyle = {
-  height: 'calc(100vh - 200px)',
-  overflowY: 'scroll',
-  scrollbarWidth: 'none',  /* Firefox */
-  msOverflowStyle: 'none',  /* IE and Edge */
-  '&::-webkit-scrollbar': {
-    display: 'none'  /* Chrome, Safari and Opera */
-  }
-} as const;
-
 const Page = () => {
+  // Manage Chat 
   const [userPrompt, setUserPrompt] = useState("");
   const [userHistory, setUserHistory] = useState<{ role: string; parts: { text: string }[] }[]>([]);
+
+  // Manage States
   const [sending, setSending] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Manage Data
   const [emails, setEmails] = useState([]);
   const [events, setEvents] = useState([]);
   const [tasks, setTasks] = useState([]);
+
   const anchorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,8 +63,7 @@ const Page = () => {
     gapi.load('client:auth2', initClient);
   }, []);
 
-  // @ts-ignore
-  const updateSigninStatus = async (isSignedIn) => {
+  const updateSigninStatus = async (isSignedIn : boolean) => {
     setIsAuthenticated(isSignedIn);
     if (isSignedIn) {
       await Promise.all([fetchUnreadEmails(), fetchUpcomingEvents(), fetchTasks()]);
@@ -84,11 +83,13 @@ const Page = () => {
       const emailPromises = messages.map(message =>
         gapi.client.gmail.users.messages.get({
           userId: 'me',
+          // @ts-ignore
           id: message.id
         })
       );
 
       const emailResponses = await Promise.all(emailPromises);
+      // @ts-ignore
       setEmails(emailResponses.map(response => response.result));
     } catch (error) {
       console.error('Error fetching emails:', error);
@@ -97,6 +98,7 @@ const Page = () => {
 
   const fetchUpcomingEvents = async () => {
     try {
+      // @ts-ignore
       const response = await gapi.client.calendar.events.list({
         calendarId: CALENDAR_ID,
         timeMin: new Date().toISOString(),
@@ -114,18 +116,22 @@ const Page = () => {
 
   const fetchTasks = async () => {
     try {
+      // @ts-ignore
       const response = await gapi.client.tasks.tasklists.list({
         maxResults: 10
       });
 
       const taskLists = response.result.items || [];
+      // @ts-ignore
       const taskListPromises = taskLists.map(taskList =>
+        // @ts-ignore
         gapi.client.tasks.tasks.list({
           tasklist: taskList.id
         })
       );
 
       const taskListResponses = await Promise.all(taskListPromises);
+      // @ts-ignore
       setTasks(taskListResponses.map(response => response.result.items || []));
     } catch (error) {
       console.error('Error fetching tasks:', error);
@@ -147,16 +153,23 @@ const Page = () => {
 
   const handleRequest = async () => {
     if (!userPrompt.trim()) return;
+
+    ///////////////////////////////
+    ///////////////////////////////
     
-    // Add user message immediately
     setUserHistory(prev => [...prev, { role: 'user', parts: [{ text: userPrompt }] }]);
     const currentPrompt = userPrompt;
     setUserPrompt('');
+
+    /////////////////////////////// 
+    ///////////////////////////////
     
     try {
       setSending(true);
+
+      /////////////////////////////// 
+      ///////////////////////////////
       
-      // Prepare the data context for Gemini
       const emailContext = emails.map(email => ({
         // @ts-ignore
         subject: email.payload.headers.find(header => header.name === 'Subject')?.value,
@@ -182,6 +195,9 @@ const Page = () => {
         due: task.due
       }));
 
+      /////////////////////////////// 
+      ///////////////////////////////
+
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: {
@@ -205,25 +221,29 @@ const Page = () => {
       const data = await response.json();
       console.log('Raw AI Response:', data.message);
       
-      // Parse the AI response
       const parsedResponse = parseAIResponse(data.message);
       if (!parsedResponse) {
         throw new Error('Failed to parse AI response');
       }
       console.log('Parsed Response:', parsedResponse);
 
-      // Handle calendar event creation if needed
+      /////////////////////////////// 
+      ///////////////////////////////
+
       if (parsedResponse.code === 2 && parsedResponse.var) {
         console.log('Creating calendar event with data:', JSON.stringify(parsedResponse.var, null, 2));
         
-        // Ensure end time is present
+        // @ts-ignore
         if (!parsedResponse.var.end?.dateTime) {
-          // If no end time but we have start time, set end time to 1 hour after start
+          // @ts-ignore
           if (parsedResponse.var.start?.dateTime) {
+            // @ts-ignore
             const startDate = new Date(parsedResponse.var.start.dateTime);
-            const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hour later
+            const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+            // @ts-ignore
             parsedResponse.var.end = {
               dateTime: endDate.toISOString(),
+              // @ts-ignore
               timeZone: parsedResponse.var.start.timeZone || 'Asia/Bangkok'
             };
           } else {
@@ -231,13 +251,17 @@ const Page = () => {
           }
         }
 
+        /////////////////////////////// 
+        ///////////////////////////////
+
         console.log('Final event data:', JSON.stringify(parsedResponse.var, null, 2));
+        // @ts-ignore
         let [success, result] = await addCalendarEvent('primary', parsedResponse.var);
         
-        // If failed due to permissions, try to reauthorize
         if (!success && result?.result?.error?.code === 403) {
           const reauthed = await reauthorize();
           if (reauthed) {
+            // @ts-ignore
             [success, result] = await addCalendarEvent('primary', parsedResponse.var);
           }
         }
@@ -247,18 +271,21 @@ const Page = () => {
         if (!success) {
           throw new Error(`Failed to create calendar event: ${JSON.stringify(result)}`);
         }
-        // Refresh calendar events after adding new event
         await fetchUpcomingEvents();
       }
-      // Handle task creation
+
+      /////////////////////////////// 
+      ///////////////////////////////
+
       else if (parsedResponse.code === 3 && parsedResponse.var) {
         console.log('Creating task:', parsedResponse.var);
+        // @ts-ignore
         let [success, result] = await addTask(parsedResponse.var);
         
-        // If failed due to permissions, try to reauthorize
         if (!success && result?.result?.error?.code === 403) {
           const reauthed = await reauthorize();
           if (reauthed) {
+            // @ts-ignore
             [success, result] = await addTask(parsedResponse.var);
           }
         }
@@ -270,10 +297,8 @@ const Page = () => {
         }
       }
 
-      // Update chat history with AI response
       setUserHistory(prev => [...prev, { role: 'model', parts: [{ text: parsedResponse.output }] }]);
       
-      // Scroll to bottom
       setTimeout(() => {
         if (anchorRef.current) {
           anchorRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -282,7 +307,7 @@ const Page = () => {
 
     } catch (error) {
       console.error('Error:', error);
-      // Add error to chat history
+      // @ts-ignore
       setUserHistory(prev => [...prev, { role: 'model', parts: [{ text: `Sorry, there was an error: ${error.message}` }] }]);
     } finally {
       setSending(false);
@@ -290,102 +315,33 @@ const Page = () => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <BeatLoader color="#000000" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <button 
-          // @ts-ignore
-          onClick={() => gapi.auth2.getAuthInstance().signIn()}
-          className="bg-black text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-        >
-          Sign in with Google
-        </button>
-      </div>
-    );
+    return <SignInScreen />;
   }
 
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-4xl mx-auto p-4 flex flex-col h-screen">
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-2">
-            <h1 className="text-2xl font-light text-gray-800">Personal AI Assistant</h1>
-            <button 
-              // @ts-ignore
-              onClick={() => gapi.auth2.getAuthInstance().signOut()}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              Sign Out
-            </button>
-          </div>
-          <p className="text-center text-sm text-gray-500">
-            {emails.length} unread emails • {events.length} upcoming events • {tasks.flat().length} tasks
-          </p>
-        </div>
-
-        <div 
-          className="flex-1 overflow-hidden"
-          style={chatContainerStyle}
-        >
-          {userHistory.map((message, index) => (
-            <div
-              key={index}
-              className={`mb-4 ${
-                message.role === "user" ? "text-right" : "text-left"
-              }`}
-            >
-              <div
-                className={`inline-block p-4 rounded-lg ${
-                  message.role === "user"
-                    ? "bg-black text-white"
-                    : "bg-gray-100 text-gray-800"
-                }`}
-              >
-                {message.parts[0].text}
-              </div>
-            </div>
-          ))}
-          {sending && (
-            <div className="mb-4 text-left">
-              <div className="inline-block p-4 rounded-lg bg-gray-100">
-                <BeatLoader size={8} color="#000000" />
-              </div>
-            </div>
-          )}
-          <div ref={anchorRef} />
-        </div>
-
-        <form
-          className="relative"
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleRequest();
-          }}
-        >
-          <input
-            type="text"
-            className="w-full p-4 pr-12 rounded-lg bg-gray-100 border-0 outline-none text-gray-800 placeholder-gray-400"
-            value={userPrompt}
-            onChange={(e) => setUserPrompt(e.target.value)}
-            placeholder="Ask about your emails or calendar events..."
-          />
-          <button
-            type="submit"
-            className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-md transition-opacity ${
-              sending ? "opacity-50" : "opacity-100 hover:opacity-80"
-            }`}
-            disabled={sending}
-          >
-            <IoSend size={20} className="text-gray-800" />
-          </button>
-        </form>
+        <Header 
+          emailCount={emails.length}
+          eventCount={events.length}
+          taskCount={tasks.flat().length}
+        />
+        <ChatMessages 
+          messages={userHistory}
+          sending={sending}
+          // @ts-ignore
+          anchorRef={anchorRef}
+        />
+        <MessageInput
+          value={userPrompt}
+          onChange={setUserPrompt}
+          onSubmit={handleRequest}
+          sending={sending}
+        />
       </div>
     </div>
   );

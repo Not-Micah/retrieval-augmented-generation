@@ -5,9 +5,12 @@ const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GOOGLE_GEN_AI_KEY);
 export async function POST(req) {
   try {
     const { message, history, context } = await req.json();
+
+    ///////////
     const currentTime = new Date();
     const tomorrow = new Date(currentTime);
     tomorrow.setDate(currentTime.getDate() + 1);
+    ///////////
 
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
@@ -35,6 +38,14 @@ IMPORTANT RULES:
 9. If you need more information from the user, use code 1 (NOT 2 or 3) and ask the question in the output
 10. Only use code 2 or 3 when you have ALL required information to create the event or task
 
+FORMATTING RULES:
+1. ALWAYS use line breaks between different events (use \\n)
+2. Use emojis appropriate to the event type
+3. Format dates and times clearly
+4. Use proper indentation and spacing
+5. For lists, put each item on a new line
+6. Preserve line breaks in the output
+
 Response format must be:
 {
   "code": number,    // 1 for read-only response, 2 for calendar event, 3 for task
@@ -49,7 +60,13 @@ Example responses:
   "output": "What time would you like to schedule the meeting for tomorrow?"
 }
 
-2. Creating calendar event:
+2. Listing events:
+{
+  "code": 1,
+  "output": "📅 Here are your upcoming events:\\n\\n🏢 **Team Meeting**\\nTomorrow from 2:00 PM - 3:00 PM\\n\\n🎓 **Training Session**\\nMonday from 10:00 AM - 11:00 AM"
+}
+
+3. Creating calendar event:
 {
   "code": 2,
   "output": "I've added the meeting to your calendar.",
@@ -66,7 +83,7 @@ Example responses:
   }
 }
 
-3. Creating task:
+4. Creating task:
 {
   "code": 3,
   "output": "I've added the task to your list.",
@@ -94,42 +111,4 @@ User message: ${message}`;
     console.error('Error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
-}
-
-function formatContextData(context) {
-    if (!context) return "No context available.";
-
-    let formattedString = "";
-
-    // Format unread emails
-    if (context.unreadEmails && context.unreadEmails.length > 0) {
-        formattedString += "Unread Emails:\n";
-        context.unreadEmails.forEach((email, index) => {
-            formattedString += `${index + 1}. Subject: ${email.subject || 'No Subject'}\n   From: ${email.from}\n   Preview: ${email.snippet}\n\n`;
-        });
-    } else {
-        formattedString += "No unread emails.\n\n";
-    }
-
-    // Format upcoming events
-    if (context.upcomingEvents && context.upcomingEvents.length > 0) {
-        formattedString += "Upcoming Calendar Events:\n";
-        context.upcomingEvents.forEach((event, index) => {
-            formattedString += `${index + 1}. ${event.summary || 'Untitled Event'}\n   Start: ${event.start}\n   End: ${event.end}\n\n`;
-        });
-    } else {
-        formattedString += "No upcoming events.\n";
-    }
-
-    // Format upcoming tasks
-    if (context.upcomingTasks && context.upcomingTasks.length > 0) {
-        formattedString += "Upcoming Tasks:\n";
-        context.upcomingTasks.forEach((task, index) => {
-            formattedString += `${index + 1}. ${task.title || 'Untitled Task'}\n   Due: ${task.due}\n\n`;
-        });
-    } else {
-        formattedString += "No upcoming tasks.\n";
-    }
-
-    return formattedString;
 }
